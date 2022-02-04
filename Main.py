@@ -44,11 +44,11 @@ def main():
 
     # Generating TxEp ##################################################################################################
 
-    txEp = Gen_txEp_Segwit([id_r0, id_s0], [id_r0], TxInput(txepintx.get_hash(), 0), eps, t_cd)
+    txEp = Gen_txEp([id_r0, id_s0], [id_r0], TxInput(txepintx.get_hash(), 0), eps, t_cd)
     # two signatures in input / one output
     Print_TX(txEp, 'Test: tx_ep 3 output (1 channel)')
 
-    txEp = Gen_txEp_Segwit([id_r0, id_s0, id_s1], [id_r0, id_r1], TxInput(txepintx.get_hash(), 0), eps, t_cd)
+    txEp = Gen_txEp([id_r0, id_s0, id_s1], [id_r0, id_r1], TxInput(txepintx.get_hash(), 0), eps, t_cd)
     # three signatures in input / two outputs
     Print_TX(txEp, 'Main: tx_ep 6 output (2 channels)')
 
@@ -98,15 +98,17 @@ def Gen_TxIn(tx_in: TxInput, id_sender: Id, id_list: List[Id], a: float, x_r: fl
     return tx_ep_in
 
 
-def Gen_txEp_Segwit(id_in: List[Id], id_out: List[Id], tx_in: TxInput, eps: float = 1, t: int = 2) -> Transaction:
+def Gen_txEp(id_in: List[Id], id_out: List[Id], tx_in: TxInput, eps: float = 1, t: int = 2) -> Transaction:
     # tx_in must hold at least n times eps coins
 
     out_list = []
     for id in id_out:
-        script = Script([id.pk.to_hex(), 'OP_CHECKSIGVERIFY', t, 'OP_CHECKSEQUENCEVERIFY'])
+        script = Script(['OP_IF',
+                         id.pk.to_hex(), 'OP_CHECKSIGVERIFY', t, 'OP_CHECKSEQUENCEVERIFY',
+                         'OP_ENDIF'])
         out_list.append(TxOutput(eps, script.to_p2sh_script_pub_key()))
 
-    txEp = Transaction([tx_in], out_list, has_segwit=True)
+    txEp = Transaction([tx_in], out_list)
 
     if len(id_in) == 1:
         r_scr = Script(['OP_1', id_in[0].pk.to_hex(), 'OP_1', 'OP_CHECKMULTISIG'])
@@ -116,12 +118,12 @@ def Gen_txEp_Segwit(id_in: List[Id], id_out: List[Id], tx_in: TxInput, eps: floa
         r_scr = Script(['OP_3', id_in[0].pk.to_hex(), id_in[1].pk.to_hex(), id_in[2].pk.to_hex(),
                         'OP_3', 'OP_CHECKMULTISIG'])
 
-    s = ['OP_0']
+    unlock_script = [0x0]
     for id in id_in:
-       sig = id.sk.sign_segwit_input(txEp, 0, r_scr, 3*eps)
-       s.append(sig)
-    txEp.witnesses.append(Script(s))
+        unlock_script.append(id.sk.sign_input(txEp, 0, r_scr))
+    unlock_script.append(r_scr.to_hex())
 
+    tx_in.script_sig = Script(unlock_script)
     return txEp
 
 
